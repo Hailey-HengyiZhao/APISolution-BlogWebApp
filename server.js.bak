@@ -1,0 +1,513 @@
+/*********************************************************************************
+ *  WEB322 – Assignment 05
+ *  I declare that this assignment is my own work in accordance with Seneca  Academic Policy.  No part *  of this assignment has been copied manually or electronically from any other source
+ *  (including 3rd party web sites) or distributed to other students.
+ *
+ *  Name: __Hengyi_Zhao_____ Student ID: ___173484213____ Date: ___2022/12/7___
+ *
+ *  Cyclic Web App URL: ______https://happy-yoke-foal.cyclic.app________________
+ *
+ *  GitHub Repository URL: ___https://github.com/HaileyZhao233/web322-app________
+ *
+ ********************************************************************************/
+
+// A2 -- import npm ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+var express = require("express");
+var app = express();
+var HTTP_PORT = process.env.PORT || 8080;
+const web322App = require("./blog-service");
+// A6 -- import auth-service
+const authData = require("./auth-service");
+// A6 -- import auth-service
+
+var path = require("path");
+// A2 -- import npm ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+// A3 -- import npm ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
+const streamifier = require("streamifier");
+cloudinary.config({
+  cloud_name: "dwleas0js",
+  api_key: "353252431234466",
+  api_secret: "YYpEl4oJnukC1VSrQ1GYctxaGXU",
+  secure: true,
+});
+const upload = multer();
+// A3 -- import npm ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+// A4 -- import handlebars ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+const exphbs = require("express-handlebars");
+const stripJs = require("strip-js");
+const blogData = require("./blog-service");
+
+app.engine(
+  ".hbs",
+  exphbs.engine({
+    extname: ".hbs",
+    helpers: {
+      navLink: function (url, options) {
+        return (
+          "<li" +
+          (url == app.locals.activeRoute ? ' class="active" ' : "") +
+          '><a href="' +
+          url +
+          '">' +
+          options.fn(this) +
+          "</a></li>"
+        );
+      },
+      equal: function (lvalue, rvalue, options) {
+        if (arguments.length < 3)
+          throw new Error("Handlebars Helper equal needs 2 parameters");
+        if (lvalue != rvalue) {
+          return options.inverse(this);
+        } else {
+          return options.fn(this);
+        }
+      },
+      safeHTML: function (context) {
+        return stripJs(context);
+      },
+      // A5 - formatDate
+      formatDate: function (dateObj) {
+        let year = dateObj.getFullYear();
+        let month = (dateObj.getMonth() + 1).toString();
+        let day = dateObj.getDate().toString();
+        return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      },
+    },
+  })
+);
+app.set("view engine", ".hbs");
+
+// A4 -- import handlebars ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+// A6 -- import Client session
+const clientSessions = require("client-sessions");
+// A6 -- Configuring Client Session Middleware
+app.use(
+  clientSessions({
+    cookieName: "session",
+    secret: "blog_web3222",
+    duration: 2 * 60 * 1000,
+    activeDuration: 1000 * 60,
+  })
+);
+
+function ensureLogin(req,res,next){
+  if(!req.session.user){
+    res.redirect('/login')
+  }else{
+    next();
+  }
+}
+
+app.use(function(req, res, next) {
+  res.locals.session = req.session;
+  next();
+});
+
+
+/*********************************************************************************
+//////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+*********************************************************************************/
+
+// A2 -- "require" blog-service.js module at the top of the server.js
+function onHttpStart() {
+  console.log("Express http server listening on " + HTTP_PORT);
+}
+
+// A4 -- adding the following middleware function above your routes in server.js
+app.use(function (req, res, next) {
+  let route = req.path.substring(1);
+  app.locals.activeRoute =
+    "/" +
+    (isNaN(route.split("/")[1])
+      ? route.replace(/\/(?!.*)/, "")
+      : route.replace(/\/(.*)/, ""));
+  app.locals.viewingCategory = req.query.category;
+  next();
+});
+
+// A5 -- adding the following middleware function above your routes in server.js
+app.use(express.urlencoded({ extended: true }));
+
+// A2 -- GET the homepage and redirect to /about
+app.get("/", (req, res) => {
+  res.redirect("/blog");
+});
+
+// A2 -- GET the route of about and send html
+app.get("/about", (req, res) => {
+  //res.sendFile(path.join(__dirname, "/views/about.html"));
+  // A4 -- render about.hbs and main.hbs
+  res.render("about", {
+    layout: "main",
+  });
+});
+
+// A4 -- GET the route of /blog
+app.get("/blog", async (req, res) => {
+  // Declare an object to store properties for the view
+  let viewData = {};
+  try {
+    // declare empty array to hold "post" objects
+    let posts = [];
+    // if there's a "category" query, filter the returned posts by category
+    if (req.query.category) {
+      // Obtain the published "posts" by category
+      posts = await blogData.getPublishedPostsByCategory(req.query.category);
+    } else {
+      // Obtain the published "posts"
+      posts = await blogData.getPublishedPosts();
+    }
+
+    // sort the published posts by postDate
+    posts.sort((a, b) => new Date(b.postDate) - new Date(a.postDate));
+    // get the latest post from the front of the list (element 0)
+    let post = posts[0];
+    // store the "posts" and "post" data in the viewData object (to be passed to the view)
+    viewData.posts = posts;
+    viewData.post = post;
+  } catch (err) {
+    viewData.message = "no results";
+  }
+
+  try {
+    // Obtain the full list of "categories"
+    let categories = await blogData.getCategories();
+    // store the "categories" data in the viewData object (to be passed to the view)
+    viewData.categories = categories;
+  } catch (err) {
+    viewData.categoriesMessage = "no results";
+  }
+  // render the "blog" view with all of the data (viewData)
+  res.render("blog", { data: viewData });
+});
+
+// A4 -- get /blog/:id
+app.get("/blog/:id", async (req, res) => {
+  // Declare an object to store properties for the view
+  let viewData = {};
+
+  try {
+    // declare empty array to hold "post" objects
+    let posts = [];
+
+    // if there's a "category" query, filter the returned posts by category
+    if (req.query.category) {
+      // Obtain the published "posts" by category
+      posts = await blogData.getPublishedPostsByCategory(req.query.category);
+    } else {
+      // Obtain the published "posts"
+      posts = await blogData.getPublishedPosts();
+    }
+    // sort the published posts by postDate
+    posts.sort((a, b) => new Date(b.postDate) - new Date(a.postDate));
+    // store the "posts" and "post" data in the viewData object (to be passed to the view)
+    viewData.posts = posts;
+  } catch (err) {
+    viewData.message = "no results";
+  }
+
+  try {
+    // Obtain the post by "id"
+    viewData.post = await blogData.getPostById(req.params.id);
+  } catch (err) {
+    viewData.message = "no results";
+  }
+
+  try {
+    // Obtain the full list of "categories"
+    let categories = await blogData.getCategories();
+    // store the "categories" data in the viewData object (to be passed to the view)
+    viewData.categories = categories;
+  } catch (err) {
+    viewData.categoriesMessage = "no results";
+  }
+  // render the "blog" view with all of the data (viewData)
+  res.render("blog", { data: viewData });
+});
+
+// A3 -- search id = value post /params
+app.get("/post/:id", ensureLogin, (req, res) => {
+  web322App
+    .getPostById(req.params.id)
+    .then((post) => {
+      res.json(post);
+    })
+    .catch((err) => {
+      console.log(err);
+      res.send("there's been a error!");
+    });
+});
+
+
+// A2 -- GET the route of /posts
+app.get("/posts", ensureLogin, (req, res) => {
+  // A3 -- query	/posts?category=value
+  if (req.query.category) {
+    web322App
+      .getPostsByCategory(req.query.category)
+      .then((post) => {
+        res.render("posts", {
+          data: post,
+          layout: "main",
+        });
+      })
+      .catch((err) => {
+        res.render("posts", { message: err });
+      });
+  } else if (req.query.minDate) {
+    // A3 -- query	/posts?minDate=value
+    web322App
+      .getPostsByMinDate(req.query.minDate)
+      .then((post) => {
+        res.render("posts", {
+          data: post,
+          layout: "main",
+        });
+      })
+      .catch((err) => {
+        res.render("posts", { message: err });
+      });
+  } else {
+    web322App
+      .getAllPosts()
+      .then((post) => {
+        // A5
+        if (post.length > 0) {
+          res.render("posts", {
+            data: post,
+            layout: "main",
+          });
+        } else {
+          res.render("posts", { message: "no results" });
+        }
+      })
+      .catch((err) => {
+        res.render("posts", { message: err });
+      });
+  }
+});
+
+// A2 -- GET the route of /categories
+app.get("/categories", ensureLogin, (req, res) => {
+  // A5 --
+  web322App
+    .getCategories()
+    .then((categories) => {
+      if (categories.length > 0) {
+        res.render("categories", {
+          categories: categories,
+          layout: "main",
+        });
+      } else {
+        res.render("categories", { message: "no results" });
+      }
+    })
+    .catch((err) => {
+      res.render("categories", { message: err });
+    });
+});
+
+// A5 -- DELETE post by ID
+app.get("/posts/delete/:id", ensureLogin, (req, res) => {
+  web322App
+    .deletePostById(req.params.id)
+    .then(() => {
+      res.redirect("/posts");
+    })
+    .catch((err) => {
+      console.log(err);
+      res
+        .status(500)
+        .send({ message: "Unable to Remove Post / Post not found)" });
+    });
+});
+
+// A5 -- DELETE categories
+app.get("/categories/delete/:id", ensureLogin, (req, res) => {
+  web322App
+    .deleteCategoryById(req.params.id)
+    .then(() => {
+      res.redirect("/categories");
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+});
+
+// A5 -- GET the route of /categories/add
+app.get("/categories/add", ensureLogin, (req, res) => {
+  //res.sendFile(path.join(__dirname, "/views/addPost.html"));
+  // A4 -- render addPost.hbs and main.hbs
+  res.render("addCategory", {
+    layout: "main",
+  });
+});
+
+// A5-- POST the route of /categories/add
+app.post("/categories/add", ensureLogin, (req, res) => {
+  console.log(req.body);
+  web322App.addCategory(req.body).then(() => {
+    res.redirect("/categories");
+  });
+});
+// A3 -- GET the route of /posts/add
+app.get("/posts/add", ensureLogin, (req, res) => {
+  //res.sendFile(path.join(__dirname, "/views/addPost.html"));
+  // A4 -- render addPost.hbs and main.hbs
+  web322App
+    .getCategories()
+    .then((categories) => {
+      res.render("addPost", {
+        categories: categories,
+        layout: "main",
+      });
+    })
+    .catch(() => {
+      let categories = [];
+      res.render("addPost", {
+        categories: categories,
+        layout: "main",
+      });
+    });
+});
+
+// A3 -- POST the new posts
+app.post("/posts/add", upload.single("featureImage"), ensureLogin, (req, res) => {
+  if (req.file) {
+    let streamUpload = (req) => {
+      return new Promise((resolve, reject) => {
+        let stream = cloudinary.uploader.upload_stream((error, result) => {
+          if (result) {
+            resolve(result);
+          } else {
+            reject(error);
+          }
+        });
+
+        streamifier.createReadStream(req.file.buffer).pipe(stream);
+      });
+    };
+
+    async function upload(req) {
+      let result = await streamUpload(req);
+      console.log(result);
+      return result;
+    }
+
+    upload(req).then((uploaded) => {
+      processPost(uploaded.url);
+    });
+  } else {
+    processPost("");
+  }
+
+  function processPost(imageUrl) {
+    req.body.featureImage = imageUrl;
+
+    // TODO: Process the req.body and add it as a new Blog Post before redirecting to /posts
+    console.log(req.body);
+    // A5 --
+    web322App.addPost(req.body).then(() => {
+      res.redirect("/posts");
+    });
+  }
+});
+
+
+
+// A6 -- GET /login
+app.get("/login",(req,res)=>{
+  res.render("login", {
+    layout: "main",
+  });
+})
+
+// A6 -- GET /register
+app.get("/register",(req,res)=>{
+  res.render("register", {
+    layout: "main",
+  });
+})
+
+// A6 -- POST /register
+app.post("/register", (req, res)=>{
+  authData.registerUser(req.body).then((data)=>{
+    console.log(data)
+    res.render('register',{
+      successMessage: "User created"
+    })
+  }).catch((err)=>{
+    res.render('register',{
+      errorMessage: err,
+      userName: req.body.userName
+    })
+  })
+})
+
+// A6 -- POST /login
+app.post('/login', (req,res)=>{
+  console.log(req.session.user);
+  req.body.userAgent = req.get('User-Agent');
+  authData.checkUser(req.body).then((user)=>{
+    req.session.user = {
+      userName: user.userName,
+      email: user.email,
+      loginHistory: user.loginHistory
+  }
+  console.log(req.session.user)
+  res.redirect('/posts')
+  }).catch((err)=>{
+    res.render('login',{
+      errorMessage: err, 
+      userName: req.body.userName
+    })
+  })
+})
+
+// A6 -- GET /logout
+app.get('/logout', (req,res)=>{
+  req.session.reset()
+  res.redirect('/')
+})
+
+// A6 -- GET /userHistory
+app.get('/userHistory', ensureLogin, (req,res)=>{
+  res.render('userHistory',{
+    layout: 'main'
+  })
+})
+
+// A2 -- send 404 if non-found route
+app.use((req, res) => {
+  res.status(404).render("404", {
+    layout: "main",
+  });
+});
+
+// A2 -- initialization
+// web322App
+//   .initialize()
+//   .then(() => {
+//     app.listen(HTTP_PORT, onHttpStart()); //once the resource has been read, we listen the website
+//   })
+//   .catch((err) => {
+//     console.log(err);
+//   });
+
+// A6 -- initialization
+web322App
+  .initialize()
+  .then(authData.initialize())
+  .then(() => {
+    app.listen(HTTP_PORT, onHttpStart()); //once the resource has been read, we listen the website
+    console.log("app listening on: " + HTTP_PORT);
+  })
+  .catch((err) => {
+    console.log("unable to start server: " + err);
+  });
